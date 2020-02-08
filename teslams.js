@@ -1,152 +1,93 @@
-'use strict';
-var request = require('request');
-var util = require('util');
-var JSONbig = require('json-bigint');
+const request = require('request');
+const util = require('util');
+const JSONbig = require('json-bigint');
 
-var portal = 'https://owner-api.teslamotors.com/api/1';
-exports.portal = portal;
-var owner_api = 'https://owner-api.teslamotors.com';
+const portal = 'https://owner-api.teslamotors.com/api/1';
+const owner_api = 'https://owner-api.teslamotors.com';
 exports.portal = owner_api;
-var token = '';
+let token = '';
 exports.token = token;
 
-// emulate the android mobile app
-var version = '2.1.79';
-var model = 'SM-G900V';
-var codename = 'REL';
-var release = '4.4.4';
-var locale = 'en_US';
-var user_agent = 'Model S ' + version + ' (' + model + '; Android ' + codename + ' ' + release + '; ' + locale + ')';
-var x_tesla_user_agent = 'TeslaApp/3.4.4-350/fad4a582e/android/9.0.0';
+const version = '2.1.79';
+const model = 'SM-G900V';
+const codename = 'REL';
+const release = '4.4.4';
+const locale = 'en_US';
+const user_agent = `Model S ${version} (${model}; Android ${codename} ${release}; ${locale})`;
+const x_tesla_user_agent = 'TeslaApp/3.4.4-350/fad4a582e/android/9.0.0';
 
-//Common HTTP header variable for all requests. Includes authentication credentials (token) and user agent string
-var http_header;
+let http_header;
 
-var report = function(error, response, body, cb) {
-  if (!!cb) cb(error || (new Error(response.statusCode + ': ' + body)), body);
-};
-var report2 = function(call, body, cb) {
-  if (typeof cb === 'function') cb(new Error('expecting JSON response to ' + call + ' request'), body);
+const report = (error, { statusCode }, body, cb) => {
+    if (!!cb) cb(error || (new Error(`${statusCode}: ${body}`)), body);
 };
 
+const report2 = (call, body, cb) => {
+    if (typeof cb === 'function') cb(new Error(`expecting JSON response to ${call} request`), body);
+};
 
-// backwards-compatible with previous API
-// all() gives the callback the raw response to the /vehicles call
-// vehicles gives the callback the first vehicle in the array returned
-// get_vid gives the callback the ID of the first vehicle in the array returned
-var all = exports.all = function(options, cb) {
-    if (!cb) cb = function(error, response, body) {/* jshint unused: false */};
-    //add option to call without using email and password
-    if (options.token) { 
+const all = exports.all = (options, cb) => {
+    if (!cb) cb = (error, response, body) => {/* jshint unused: false */ };
+    if (options.token) {
         exports.token = options.token;
         // set common HTTP Header used for all requests
-        http_header = { 
-            'Authorization': 'Bearer ' + options.token, 
-            'Content-Type': 'application/json; charset=utf-8', 
+        http_header = {
+            'Authorization': `Bearer ${options.token}`,
+            'Content-Type': 'application/json; charset=utf-8',
             'User-Agent': user_agent,
-            'X-Tesla-User-Agent': x_tesla_user_agent,
-            //'Accept-Encoding': 'gzip'
-            // 'Accept-Encoding': 'gzip,deflate'
-        }; 
-        request( {
-            method : 'GET',
-            url: portal + '/vehicles',
+            'X-Tesla-User-Agent': x_tesla_user_agent
+        };
+        request({
+            method: 'GET',
+            url: `${portal}/vehicles`,
             gzip: true,
             headers: http_header
-        }, cb); 
-    } else {
-      http_header = { 
-            'Authorization': 'Bearer ' + options.token, 
-            'Content-Type': 'application/json; charset=utf-8', 
-            'User-Agent': user_agent, 
-            'X-Tesla-User-Agent': x_tesla_user_agent,
-        }; 
-        request( { 
-           method: 'POST',
-           url: owner_api + '/oauth/token',
-           gzip: true,
-           headers: http_header,
-           form: { 
-               "grant_type" : "password",
-               "client_id" : 'e4a9949fcfa04068f59abb5a658f2bac0a3428e4652315490b659d5ab3f35a9e', 
-               "client_secret" : 'c75f14bbadc8bee3a7594412c31416f8300256d7668ea7e6e7f06727bfb9d220',
-               "email" : options.email,
-               "password" : options.password } 
-           }, function (error, response, body) {
-              try{ 
-                  var authdata = JSON.parse( body );
-                  token = authdata.access_token;
-                  exports.token = token;
-                  // set common HTTP Header used for all requests
-                  http_header = { 
-                    'Authorization': 'Bearer ' + token, 
-                    'Content-Type': 'application/json; charset=utf-8', 
-                    'User-Agent': user_agent,
-                    //'Accept-Encoding': 'gzip'
-                    // 'Accept-Encoding': 'gzip,deflate'
-                  };
-              } catch (e) {
-                  console.log( 'Error parsing response to oauth token request');
-              }
-
-              if ((!!error) || ((response.statusCode !== 200) && (response.statusCode !== 302))) return report(error, response, body, cb);
-              request( {
-                 method : 'GET',
-                 url: portal + '/vehicles',
-                 gzip: true,
-                 headers: http_header
-              }, cb); 
-        });
+        }, cb);
     }
 };
 
-// returns first vehicle in list
-var vehicles = exports.vehicles = function(options, cb) {
-  if (!cb) cb = function(data) {/* jshint unused: false */};
+const vehicles = exports.vehicles = (options, cb) => {
+    if (!cb) cb = data => {/* jshint unused: false */ };
 
-  all(options, function (error, response, body) {
-    var data;
+    all(options, (error, response, body) => {
+        let data;
 
-    try { data = JSONbig.parse(body); } catch(err) { return cb(new Error('login failed\nerr: ' + err + '\nbody: ' + body)); }
-    if (!util.isArray(data.response)) return cb(new Error('expecting an array from Tesla Motors cloud service'));
-    data = data.response[0];
-    data.id = JSONbig.stringify(data.id);
-    cb((!!data.id) ? data : (new Error('expecting vehicle ID from Tesla Motors cloud service')));
-  });
+        try { data = JSONbig.parse(body); } catch (err) { return cb(new Error(`login failed\nerr: ${err}\nbody: ${body}`)); }
+        if (!util.isArray(data.response)) return cb(new Error('expecting an array from Tesla Motors cloud service'));
+        data = data.response[0];
+        data.id = JSONbig.stringify(data.id);
+        cb((!!data.id) ? data : (new Error('expecting vehicle ID from Tesla Motors cloud service')));
+    });
 };
 
-// returns ID of first vehicle in list as a string to avoid bigint issues
-exports.get_vid = function(options, cb) {
-  vehicles(options, function(data) {
-    if (!!data.id) data = data.id; if (!!cb) cb(data);
-  });
+exports.get_vid = (options, cb) => {
+    vehicles(options, data => {
+        if (!!data.id) data = data.id; if (!!cb) cb(data);
+    });
 };
 
-function set_token( token ) {
+function set_token(token) {
     exports.token = token;
-    // set common HTTP Header used for all requests
-    http_header = { 
-        'Authorization': 'Bearer ' + token, 
-        'Content-Type': 'application/json; charset=utf-8', 
+    http_header = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
         'User-Agent': user_agent,
-        //'Accept-Encoding': 'gzip'
-        // 'Accept-Encoding': 'gzip,deflate'
-    }; 
+    };
 }
 exports.set_token = set_token;
 
 
-function mobile_enabled( vid, cb ) {
-    request( {
+function mobile_enabled(vid, cb) {
+    request({
         method: 'GET',
-        url:  portal + '/vehicles/' + vid + '/mobile_enabled',
+        url: `${portal}/vehicles/${vid}/mobile_enabled`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('mobile_enabled', body, cb);
@@ -155,17 +96,17 @@ function mobile_enabled( vid, cb ) {
 }
 exports.mobile_enabled = mobile_enabled;
 
-function get_charge_state( vid, cb ) {
-    request( {
+function get_charge_state(vid, cb) {
+    request({
         method: 'GET',
-        url: portal + '/vehicles/' + vid + '/data_request/charge_state',
+        url: `${portal}/vehicles/${vid}/data_request/charge_state`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('charge_state', body, cb);
@@ -174,17 +115,17 @@ function get_charge_state( vid, cb ) {
 }
 exports.get_charge_state = get_charge_state;
 
-function get_climate_state( vid, cb ) {
-    request( {
+function get_climate_state(vid, cb) {
+    request({
         method: 'GET',
-        url: portal + '/vehicles/' + vid + '/data_request/climate_state',
+        url: `${portal}/vehicles/${vid}/data_request/climate_state`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('climate_state', body, cb);
@@ -193,17 +134,17 @@ function get_climate_state( vid, cb ) {
 }
 exports.get_climate_state = get_climate_state;
 
-function get_drive_state( vid, cb ) {
-    request( {
+function get_drive_state(vid, cb) {
+    request({
         method: 'GET',
-        url: portal + '/vehicles/' + vid + '/data_request/drive_state',
+        url: `${portal}/vehicles/${vid}/data_request/drive_state`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('drive_state', body, cb);
@@ -212,17 +153,17 @@ function get_drive_state( vid, cb ) {
 }
 exports.get_drive_state = get_drive_state;
 
-function get_vehicle_state( vid, cb ) {
-    request( {
+function get_vehicle_state(vid, cb) {
+    request({
         method: 'GET',
-        url: portal + '/vehicles/' + vid + '/data_request/vehicle_state',
+        url: `${portal}/vehicles/${vid}/data_request/vehicle_state`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('vehicle_state', body, cb);
@@ -231,17 +172,17 @@ function get_vehicle_state( vid, cb ) {
 }
 exports.get_vehicle_state = get_vehicle_state;
 
-function get_gui_settings( vid, cb ) {
-    request( { 
-        method: 'GET', 
-        url: portal + '/vehicles/' + vid + '/data_request/gui_settings',
+function get_gui_settings(vid, cb) {
+    request({
+        method: 'GET',
+        url: `${portal}/vehicles/${vid}/data_request/gui_settings`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('gui_settings', body, cb);
@@ -250,17 +191,17 @@ function get_gui_settings( vid, cb ) {
 }
 exports.get_gui_settings = get_gui_settings;
 
-function wake_up( vid, cb ) {
-    request( { 
-        method: 'POST', 
-        url: portal + '/vehicles/' + vid + '/command/wake_up',
+function wake_up(vid, cb) {
+    request({
+        method: 'POST',
+        url: `${portal}/vehicles/${vid}/command/wake_up`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
 
         } catch (err) {
@@ -270,17 +211,17 @@ function wake_up( vid, cb ) {
 }
 exports.wake_up = wake_up;
 
-function open_charge_port( vid, cb ) {
-    request( {
-        method: 'POST', 
-        url: portal + '/vehicles/' + vid + '/command/charge_port_door_open',
+function open_charge_port(vid, cb) {
+    request({
+        method: 'POST',
+        url: `${portal}/vehicles/${vid}/command/charge_port_door_open`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('charge_port_door_open', body, cb);
@@ -289,111 +230,112 @@ function open_charge_port( vid, cb ) {
 }
 exports.open_charge_port = open_charge_port;
 
-var CHARGE_OFF   = 0; // changes charge state to ON without effecting range mode
-var CHARGE_ON    = 1; // changes charge state to OFF without effecting range mode
-function charge_state( params, cb ) {
-    var vid = params.id;
-    var state = params.charge;
-    // Change the range mode if necessary
-    if (state == CHARGE_ON  || state == "on" || state == "start" || state === true ) { 
-        state = "start"; 
+const CHARGE_OFF = 0;
+const CHARGE_ON = 1;
+function charge_state({ id, charge }, cb) {
+    const vid = id;
+    let state = charge;
+
+    if (state == CHARGE_ON || state == "on" || state == "start" || state === true) {
+        state = "start";
     }
-    if (state == CHARGE_OFF || state == "off" || state == "stop" || state === false ) { 
+
+    if (state == CHARGE_OFF || state == "off" || state == "stop" || state === false) {
         state = "stop";
     }
 
-    if (state == "start" || state == "stop" ) {
-        request( {
-            method: 'POST', 
-            url: portal + '/vehicles/' + vid + '/command/charge_' + state,
+    if (state == "start" || state == "stop") {
+        request({
+            method: 'POST',
+            url: `${portal}/vehicles/${vid}/command/charge_${state}`,
             gzip: true,
             headers: http_header
-        }, function (error, response, body) { 
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
-                return report2('charge_' + state, body, cb);
+                return report2(`charge_${state}`, body, cb);
             }
         });
     } else {
-        if (typeof cb == 'function') return cb( new Error("Invalid charge state = " + state));  
+        if (typeof cb == 'function') return cb(new Error(`Invalid charge state = ${state}`));
         else return false;
-    } 
+    }
 }
 exports.charge_state = charge_state;
 exports.CHARGE_OFF = CHARGE_OFF;
 exports.CHARGE_ON = CHARGE_ON;
 
-var RANGE_STD    = 0; // changes range mode to STANDARD without effecting charge state
-var RANGE_MAX    = 1; // changes range mode to MAX_RANGE without effecting charge state
-function charge_range( params, cb ) {
-    var vid = params.id;
-    var range = params.range;
-    var percent = params.percent;
-    if (range == RANGE_STD || range == "std" || range == "standard" ) { 
+const RANGE_STD = 0;
+const RANGE_MAX = 1;
+function charge_range(params, cb) {
+    const vid = params.id;
+    let range = params.range;
+    const percent = params.percent;
+    if (range == RANGE_STD || range == "std" || range == "standard") {
         range = "standard";
     }
     if (range == RANGE_MAX || range == "max" || range == "max_range") {
         range = "max_range";
     }
-    if (range == "standard" || range == "max_range" ) {
-        request( {
-            method: 'POST', 
-            url: portal + '/vehicles/' + vid + '/command/charge_' + range,
+    if (range == "standard" || range == "max_range") {
+        request({
+            method: 'POST',
+            url: `${portal}/vehicles/${vid}/command/charge_${range}`,
             gzip: true,
             headers: http_header
-        }, function (error, response, body) { 
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
-                return report2('charge_' + range, body, cb);
+                return report2(`charge_${range}`, body, cb);
             }
         });
-    } else if ( range == "set" && (percent >= 50) && (percent <= 100) ) {
-        request( {
-            method: 'POST', 
-            url: portal + '/vehicles/' + vid + '/command/set_charge_limit',
+    } else if (range == "set" && (percent >= 50) && (percent <= 100)) {
+        request({
+            method: 'POST',
+            url: `${portal}/vehicles/${vid}/command/set_charge_limit`,
             gzip: true,
             headers: http_header,
-            form: { 
-                "percent" : percent.toString()
+            form: {
+                "percent": percent.toString()
             }
-        }, function (error, response, body) { 
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
                 return report2('set_charge_limit', body, cb);
             }
         });
     } else {
-        if (typeof cb == 'function') return cb( new Error("Invalid charge range = " + range));  
+        if (typeof cb == 'function') return cb(new Error(`Invalid charge range = ${range}`));
         else return false;
-    } 
+    }
 }
 exports.charge_range = charge_range;
 exports.RANGE_STD = RANGE_STD;
 exports.RANGE_MAX = RANGE_MAX;
 
-function flash( vid, cb ) {
-    request({ 
-        method: 'POST', 
-        url: portal + '/vehicles/' + vid + '/command/flash_lights',
+function flash(vid, cb) {
+    request({
+        method: 'POST',
+        url: `${portal}/vehicles/${vid}/command/flash_lights`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('flash_lights', body, cb);
@@ -402,17 +344,17 @@ function flash( vid, cb ) {
 }
 exports.flash = flash;
 
-function honk( vid, cb ) {
-    request( {
-        method: 'POST', 
-        url: portal + '/vehicles/' + vid + '/command/honk_horn',
+function honk(vid, cb) {
+    request({
+        method: 'POST',
+        url: `${portal}/vehicles/${vid}/command/honk_horn`,
         gzip: true,
         headers: http_header
-    }, function (error, response, body) { 
+    }, (error, response, body) => {
         if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
         try {
-            var data = JSON.parse(body); 
-            if (typeof cb == 'function') return cb( data.response );  
+            const data = JSON.parse(body);
+            if (typeof cb == 'function') return cb(data.response);
             else return true;
         } catch (err) {
             return report2('honk_horn', body, cb);
@@ -421,45 +363,45 @@ function honk( vid, cb ) {
 }
 exports.honk = honk;
 
-var LOCK_OFF = 0;
-var LOCK_ON  = 1;
-function door_lock( params, cb ) {
-    var vid = params.id;
-    var state = params.lock;
-    if (state == "lock" || state === true || state == "on" || state == "close" ) {
-        request( {
+const LOCK_OFF = 0;
+const LOCK_ON = 1;
+function door_lock({ id, lock }, cb) {
+    const vid = id;
+    const state = lock;
+    if (state == "lock" || state === true || state == "on" || state == "close") {
+        request({
             method: 'POST',
-            url: portal + '/vehicles/' + vid + '/command/door_lock',
+            url: `${portal}/vehicles/${vid}/command/door_lock`,
             gzip: true,
             headers: http_header
-        }, function (error, response, body) { 
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
                 return report2('door_lock', body, cb);
             }
         });
-    } else if (state == "unlock" || state === false || state == "off" || state == "open" ) {
-        request( { 
+    } else if (state == "unlock" || state === false || state == "off" || state == "open") {
+        request({
             method: 'POST',
-            url: portal + '/vehicles/' + vid + '/command/door_unlock',
+            url: `${portal}/vehicles/${vid}/command/door_unlock`,
             gzip: true,
             headers: http_header
-        }, function (error, response, body) { 
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
                 return report2('door_unlock', body, cb);
             }
         });
     } else {
-        if (typeof cb == 'function') return cb( new Error("Invalid door lock state = " + state));  
+        if (typeof cb == 'function') return cb(new Error(`Invalid door lock state = ${state}`));
         else return false;
     }
 }
@@ -467,50 +409,48 @@ exports.door_lock = door_lock;
 exports.LOCK_OFF = LOCK_OFF;
 exports.LOCK_ON = LOCK_ON;
 
-var TEMP_HI = 32;
-var TEMP_LO = 17;
-function set_temperature( params, cb ) {
-    var dtemp = params.dtemp;
-    var ptemp = params.ptemp;
-    var vid = params.id;
-    var error = false;
-    
-    //var temp_str = "";
-    if ( dtemp !== undefined && dtemp <= TEMP_HI && dtemp >= TEMP_LO) {
-        //temp_str = 'driver_temp=' + dtemp; // change from string to JSON form data
-    } else {
+const TEMP_HI = 31;
+const TEMP_LO = 18;
+function set_temperature(params, cb) {
+    const dtemp = params.dtemp;
+    let ptemp = params.ptemp;
+    const vid = params.id;
+    let error = false;
+
+    if (!dtemp || dtemp > TEMP_HI || dtemp < TEMP_LO) {
         error = true;
     }
-    // if no passenger temp is passed, the driver temp is also used as the passenger temp
-    if ( ptemp !== undefined && ptemp <= TEMP_HI && ptemp >= TEMP_LO) {
-        //temp_str = temp_str +'&passenger_temp=' + ptemp; // change from string to JSON form data
-    } else if ( ptemp === undefined ) {
+
+    if (ptemp === undefined) {
         ptemp = dtemp;
-    } else {
+    }
+
+    if (!ptemp || ptemp > TEMP_HI || ptemp < TEMP_LO) {
         error = true;
     }
+
     if (!error) {
-        request( {
+        request({
             method: 'POST',
-            url: portal + '/vehicles/' + vid + '/command/set_temps',
+            url: `${portal}/vehicles/${vid}/command/set_temps`,
             gzip: true,
             headers: http_header,
             form: {
-                "driver_temp" : dtemp.toString(),
-                "passenger_temp" : ptemp.toString(),
+                "driver_temp": dtemp.toString(),
+                "passenger_temp": ptemp.toString(),
             }
-        }, function (error, response, body) { 
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
                 return report2('set_temps', body, cb);
             }
         });
     } else {
-        if (typeof cb == 'function') return cb( new Error('Invalid temperature setting (' + dtemp + 'C), Passenger (' + ptemp + 'C)'));  
+        if (typeof cb == 'function') return cb(new Error(`Invalid temperature setting (${dtemp}C), Passenger (${ptemp}C)`));
         else return false;
     }
 }
@@ -519,47 +459,47 @@ exports.TEMP_HI = TEMP_HI;
 exports.TEMP_LO = TEMP_LO;
 
 
-var CLIMATE_OFF = 0;
-var CLIMATE_ON  = 1;
-function auto_conditioning( params, cb ) {
-    var vid = params.id;
-    var state = params.climate;
+const CLIMATE_OFF = 0;
+const CLIMATE_ON = 1;
+function auto_conditioning({ id, climate }, cb) {
+    const vid = id;
+    let state = climate;
     if (state == CLIMATE_ON) { state = true; }
     if (state == CLIMATE_OFF) { state = false; }
-    if (state == "start" || state === true || state == "on" ) {
-        request( {
+    if (state == "start" || state === true || state == "on") {
+        request({
             method: 'POST',
-            url: portal + '/vehicles/' + vid + '/command/auto_conditioning_start',
+            url: `${portal}/vehicles/${vid}/command/auto_conditioning_start`,
             gzip: true,
             headers: http_header
-        }, function (error, response, body) { 
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
                 return report2('auto_conditioning_start', body, cb);
             }
         });
-    } else if (state == "stop" || state === false || state == "off"  ) {
-        request( {
+    } else if (state == "stop" || state === false || state == "off") {
+        request({
             method: 'POST',
-            url: portal + '/vehicles/' + vid + '/command/auto_conditioning_stop',
+            url: `${portal}/vehicles/${vid}/command/auto_conditioning_stop`,
             gzip: true,
             headers: http_header
-        }, function (error, response, body) { 
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
                 return report2('auto_conditioning_stop', body, cb);
             }
         });
     } else {
-        if (typeof cb == 'function') return cb( new Error("Invalid auto conditioning state = " + state));  
+        if (typeof cb == 'function') return cb(new Error(`Invalid auto conditioning state = ${state}`));
         else return false;
     }
 }
@@ -567,60 +507,60 @@ exports.auto_conditioning = auto_conditioning;
 exports.CLIMATE_OFF = CLIMATE_OFF;
 exports.CLIMATE_ON = CLIMATE_ON;
 
-var ROOF_CLOSE   = 0;
-var ROOF_VENT    = 1;
-var ROOF_COMFORT = 2;
-var ROOF_OPEN    = 3;
-function sun_roof( params, cb ) {
-    var vid = params.id;
-    var state = params.roof;
-    var percent = params.percent;
+const ROOF_CLOSE = 0;
+const ROOF_VENT = 1;
+const ROOF_COMFORT = 2;
+const ROOF_OPEN = 3;
+function sun_roof(params, cb) {
+    const vid = params.id;
+    let state = params.roof;
+    const percent = params.percent;
     // add a check that  their is a sunroof on the car??
     if (state == ROOF_CLOSE) { state = "close"; }
     if (state == ROOF_VENT) { state = "vent"; }
     if (state == ROOF_COMFORT) { state = "comfort"; }
     if (state == ROOF_OPEN) { state = "open"; }
     if (state == "open" || state == "close" || state == "comfort" || state == "vent") {
-        request( {
+        request({
             method: 'POST',
-            url: portal +'/vehicles/' + vid + '/command/sun_roof_control',
+            url: `${portal}/vehicles/${vid}/command/sun_roof_control`,
             gzip: true,
             headers: http_header,
             form: {
                 'state': state
             }
-        }, function (error, response, body) {
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
-                return report2('sun_roof_control ' + state, body, cb);
+                return report2(`sun_roof_control ${state}`, body, cb);
             }
         });
-    } else if ( (state == "move") && (percent >= 0) && (percent <= 100) ) {
-        request( {
+    } else if ((state == "move") && (percent >= 0) && (percent <= 100)) {
+        request({
             method: 'POST',
-            url: portal +'/vehicles/' + vid + '/command/sun_roof_control',
+            url: `${portal}/vehicles/${vid}/command/sun_roof_control`,
             gzip: true,
             headers: http_header,
             form: {
                 'state': 'move',
                 'percent': percent.toString()
             }
-        }, function (error, response, body) {
+        }, (error, response, body) => {
             if ((!!error) || (response.statusCode !== 200)) return report(error, response, body, cb);
             try {
-                var data = JSON.parse(body); 
-                if (typeof cb == 'function') return cb( data.response );  
+                const data = JSON.parse(body);
+                if (typeof cb == 'function') return cb(data.response);
                 else return true;
             } catch (err) {
                 return report2('sun_roof_control move', body, cb);
             }
         });
     } else {
-        if (typeof cb == 'function') return cb( new Error("Invalid sun roof state " + util.inspect(params)));  
+        if (typeof cb == 'function') return cb(new Error(`Invalid sun roof state ${util.inspect(params)}`));
         else return false;
     }
 }
@@ -630,41 +570,31 @@ exports.ROOF_VENT = ROOF_VENT;
 exports.ROOF_COMFORT = ROOF_COMFORT;
 exports.ROOF_OPEN = ROOF_OPEN;
 
-//left off here//
-// Streaming API stuff is below. Everything above is the REST API 
-//
-// Required options to teslams.stream() are { 
-//              email: 'your teslamotors.com login', 
-//              password: 'token returned from a prior call to teslams.vehicles()',
-//              vehicle_id: 'Long form vehicle_id returned from a prior call to teslams.vehicles()'
-//              a callback that expects ( error, response, body) for the HTTP response
-// }
-// See examples/examplestream.js for a simple one poll working example of how to use this function
-// See examples/streaming.js for a more complicated but useful continuous polling example of streaming
+exports.stream_columns = ['speed',
+    'odometer',
+    'soc',
+    'elevation',
+    'est_heading',
+    'est_lat',
+    'est_lng',
+    'power',
+    'shift_state',
+    'range',
+    'est_range',
+    'heading'
+];
 
-exports.stream_columns = [ 'speed',
-                           'odometer',
-                           'soc',
-                           'elevation',
-                           'est_heading',
-                           'est_lat',
-                           'est_lng',
-                           'power',
-                           'shift_state',
-                           'range',
-                           'est_range',
-                           'heading'
-                          ];
+exports.stream = ({ vehicle_id, email, password }, cb) => {
+    if (!cb) cb = (error, response, body) => {/* jshint unused: false */ };
 
-exports.stream = function(options, cb) {
-  if (!cb) cb = function(error, response, body) {/* jshint unused: false */};
-
-  request({ method : 'GET',
-            url    : 'https://streaming.vn.teslamotors.com/stream/' + options.vehicle_id + '/?values=' + exports.stream_columns.join(','),
-            gzip: true,
-            auth   :
-            { user : options.email,
-              pass : options.password
-            }
-          }, cb);
+    request({
+        method: 'GET',
+        url: `https://streaming.vn.teslamotors.com/stream/${vehicle_id}/?values=${exports.stream_columns.join(',')}`,
+        gzip: true,
+        auth:
+        {
+            user: email,
+            pass: password
+        }
+    }, cb);
 };
